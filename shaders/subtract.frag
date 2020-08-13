@@ -1,13 +1,13 @@
 #version 440
 
-precision highp float;
-
-varying float v_layer;
+flat in float v_layer;
 
 uniform vec3 u_resolution;
 
 uniform sampler3D u_velocityTexture;
 uniform sampler3D u_pressure;
+
+out vec4 fragColor;
 
 void main () {
 	vec3 coordinates = vec3(gl_FragCoord.xy / u_resolution.xy, v_layer / u_resolution.z);
@@ -34,5 +34,5 @@ void main () {
 
 	vec3 currentVelocity = texture(u_velocityTexture, coordinates).rgb;
 
-	gl_FragColor = vec4(currentVelocity - gradient, 0.0);
+	fragColor = vec4(currentVelocity - gradient, 0.0);
 }

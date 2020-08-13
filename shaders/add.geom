@@ -4,7 +4,7 @@ layout(triangles) in;
 layout (triangle_strip, max_vertices = 3) out;
 
 in int v_instance[3];
-out float v_layer;
+flat out float v_layer;
 
 void main () {
 	gl_Layer = v_instance[0];

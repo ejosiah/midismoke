@@ -1,8 +1,6 @@
 #version 440
 
-precision highp float;
-
-varying float v_layer;
+flat in float v_layer;
 
 uniform vec3 u_resolution;
 uniform sampler3D u_velocityTexture;
@@ -14,6 +12,8 @@ uniform sampler3D u_phinhatTexture;
 uniform float u_dissipation;
 
 uniform float u_deltaTime;
+
+out vec4 fragColor;
 
 void main () {
 	vec3 coordinates = vec3(gl_FragCoord.xy, v_layer);
@@ -48,5 +48,5 @@ void main () {
 
 	vec4 value = (phin1hat + 0.5 * (phin - phinhat));
 
-	gl_FragColor = clamp(value, dataMin, dataMax) * pow((1.0 - u_dissipation), u_deltaTime);
+	fragColor = clamp(value, dataMin, dataMax) * pow((1.0 - u_dissipation), u_deltaTime);
 }

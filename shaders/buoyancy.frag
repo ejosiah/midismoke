@@ -1,8 +1,6 @@
 #version 440
 
-precision highp float;
-
-varying float v_layer;
+flat in float v_layer;
 
 uniform vec3 u_resolution;
 uniform sampler3D u_velocityTexture;
@@ -11,6 +9,8 @@ uniform sampler3D u_temperatureTexture;
 uniform float u_deltaTime;
 
 uniform vec3 u_position;
+
+out vec4 fragColor;
 
 void main () {
 
@@ -21,6 +21,6 @@ void main () {
 	vec3 up = vec3(0.0, 1.0, 0.0);
 	vec3 force = temperature * up * u_deltaTime;
 
-	gl_FragColor = vec4(currentVelocity + force, 0.0);
+	fragColor = vec4(currentVelocity + force, 0.0);
 
 }

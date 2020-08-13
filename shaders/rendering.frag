@@ -1,8 +1,8 @@
 #version 440
 
-precision highp float;
-
 in vec3 v_position;
+
+const int RAY_STEPS = 150;
 
 uniform vec3 u_resolution;
 uniform sampler3D u_input;
@@ -14,6 +14,8 @@ uniform float u_densityScale;
 uniform float u_colorScale;
 
 uniform float u_stepSize;
+
+out vec4 fragColor;
 
 void main () {
 	vec3 cameraPosition = vec3(0.0, 0.0, u_cameraDistance);
@@ -50,5 +52,5 @@ void main () {
 
 	}
 
-	gl_FragColor = vec4(finalColor.rgb, 1.0);
+	fragColor = vec4(finalColor.rgb, 1.0);
 }

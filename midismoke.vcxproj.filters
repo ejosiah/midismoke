@@ -45,4 +45,63 @@
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
+  <ItemGroup>
+    <None Include="shaders\add.frag">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="shaders\add.geom">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="shaders\add.vert">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="shaders\advect.frag">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="shaders\blur.frag">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="shaders\buoyancy.frag">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="shaders\composite.frag">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="shaders\divergence.frag">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="shaders\fullscreen.vert">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="shaders\jacobi.frag">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="shaders\maccormack.frag">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="shaders\rendering.frag">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="shaders\rendering.vert">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="shaders\subtract.frag">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="shaders\transparency.frag">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="shaders\volume.geom">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="shaders\volume.vert">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="shaders\vorticity.frag">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="shaders\vorticityforce.frag">
+      <Filter>Resource Files</Filter>
+    </None>
+  </ItemGroup>
 </Project>

@@ -1,8 +1,8 @@
 #version 440
 
-precision highp float;
+const int RAY_STEPS = 100;
 
-varying float v_layer;
+flat in float v_layer;
 
 uniform vec3 u_resolution;
 
@@ -14,6 +14,8 @@ uniform float u_absorption;
 uniform float u_ambient;
 
 uniform float u_stepSize;
+
+out vec4 fragColor;
 
 void main () {
 
@@ -40,6 +42,6 @@ void main () {
 
 	float transparency = exp(-totalDensity * u_absorption);
 
-	gl_FragColor = vec4(vec3(transparency) + u_ambient, 0.0);
+	fragColor = vec4(vec3(transparency) + u_ambient, 0.0);
 	
 }

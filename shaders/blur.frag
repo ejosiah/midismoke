@@ -1,11 +1,16 @@
 #version 440
 
+const int BLUR_WIDTH = 500;
+const int BLUR_STEP = 10;
+
 uniform sampler2D u_input;
 uniform vec2 u_resolution;
 
 uniform int u_direction; //0 = horizontal, 1 = vertical
 
 uniform float u_blurSigma;
+
+out vec4 fragColor;
 
 void main () {
 	vec2 coordinates = gl_FragCoord.xy / u_resolution.xy;
@@ -33,5 +38,5 @@ void main () {
 
 	total /= weight;
 
-	gl_FragColor = vec4(total, 1.0);
+	fragColor = vec4(total, 1.0);
 }

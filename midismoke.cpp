@@ -10,6 +10,8 @@
 
 #include <string>
 
+#pragma comment(lib, "legacy_stdio_definitions.lib")
+
 const double PI = 3.14159265358979323846264338327950;
 
 const int WINDOW_WIDTH = 1920;
@@ -238,7 +240,7 @@ void setup() {
 	makePerspectiveMatrix(projectionMatrix, static_cast<float>(PI * FOV_IN_DEGREES / 180.0), static_cast<float>(WINDOW_WIDTH) / static_cast<float>(WINDOW_HEIGHT), 0.1f, 1000.0f);
 
 	GLuint renderingVertexShader = buildShaderFromFile(GL_VERTEX_SHADER, "shaders/rendering.vert");
-	GLuint renderingFragmentShader = buildShader(GL_FRAGMENT_SHADER, ("#define RAY_STEPS " + std::to_string(RENDERING_STEPS) + " \n" + loadStringFromFile("shaders/rendering.frag")).c_str());
+	GLuint renderingFragmentShader = buildShader(GL_FRAGMENT_SHADER, (loadStringFromFile("shaders/rendering.frag")).c_str());
 	GLuint volumeVertexShader = buildShaderFromFile(GL_VERTEX_SHADER, "shaders/volume.vert");
 	GLuint volumeGeometryShader = buildShaderFromFile(GL_GEOMETRY_SHADER, "shaders/volume.geom");
 	GLuint jacobiFragmentShader = buildShaderFromFile(GL_FRAGMENT_SHADER, "shaders/jacobi.frag");
@@ -249,7 +251,7 @@ void setup() {
 	GLuint subtractFragmentShader = buildShaderFromFile(GL_FRAGMENT_SHADER, "shaders/subtract.frag");
 	GLuint vorticityFragmentShader = buildShaderFromFile(GL_FRAGMENT_SHADER, "shaders/vorticity.frag");
 	GLuint vorticityForceFragmentShader = buildShaderFromFile(GL_FRAGMENT_SHADER, "shaders/vorticityforce.frag");
-	GLuint transparencyFragmentShader = buildShader(GL_FRAGMENT_SHADER, ("#define RAY_STEPS " + std::to_string(TRANSPARENCY_STEPS) + " \n" + loadStringFromFile("shaders/transparency.frag")).c_str());
+	GLuint transparencyFragmentShader = buildShader(GL_FRAGMENT_SHADER, (loadStringFromFile("shaders/transparency.frag")).c_str());
 
 	renderingProgram = buildProgram(renderingVertexShader, renderingFragmentShader);
 	jacobiProgram = buildProgram(volumeVertexShader, volumeGeometryShader, jacobiFragmentShader);
@@ -263,9 +265,7 @@ void setup() {
 	transparencyProgram = buildProgram(volumeVertexShader, volumeGeometryShader, transparencyFragmentShader);
 	compositeProgram = buildProgram(buildShaderFromFile(GL_VERTEX_SHADER, "shaders/fullscreen.vert"), buildShaderFromFile(GL_FRAGMENT_SHADER, "shaders/composite.frag"));
 	blurProgram = buildProgram(buildShaderFromFile(GL_VERTEX_SHADER, "shaders/fullscreen.vert"),
-		buildShader(GL_FRAGMENT_SHADER, (
-		"#define BLUR_WIDTH " + std::to_string(BLUR_WIDTH) + " \n" +
-		"#define BLUR_STEP " + std::to_string(BLUR_STEP) + " \n" + loadStringFromFile("shaders/blur.frag")).c_str()));
+		buildShader(GL_FRAGMENT_SHADER, (loadStringFromFile("shaders/blur.frag")).c_str()));
 	addProgram = buildProgram(buildShaderFromFile(GL_VERTEX_SHADER, "shaders/add.vert"), buildShaderFromFile(GL_GEOMETRY_SHADER, "shaders/add.geom"), buildShaderFromFile(GL_FRAGMENT_SHADER, "shaders/add.frag"));
 
 	glGenFramebuffers(1, &simulationFramebuffer);
