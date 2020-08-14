@@ -88,6 +88,7 @@
   <ItemGroup>
     <ClCompile Include="glew.c" />
     <ClCompile Include="midismoke.cpp" />
+    <ClCompile Include="playsaw.cpp" />
     <ClCompile Include="RtMidi.cpp" />
     <ClCompile Include="utilities.cpp" />
   </ItemGroup>

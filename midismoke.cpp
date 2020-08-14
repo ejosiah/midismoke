@@ -9,7 +9,6 @@
 #include "utilities.h"
 
 #include <string>
-#include <portaudio.h>
 #include <stdexcept>
 #include <iostream>
 #include <algorithm>
@@ -18,17 +17,24 @@
 #include <limits>
 #include <boost/circular_buffer.hpp>
 #include <thread>
+#include "RtAudio.h"
+
 #pragma comment(lib, "legacy_stdio_definitions.lib")
-#pragma comment(lib, "portaudio_x86.lib")
+#pragma comment(lib, "rtaudio.lib")
+
 
 #define NUM_SECONDS   (5)
 #define SAMPLE_RATE   (44000)
-#define FRAMES_PER_BUFFER  (440)
+#define FRAMES_PER_BUFFER  (4400)
 constexpr int BUFFER_SIZE = 4400;
 constexpr double dt = 1.0 / SAMPLE_RATE;
 #ifndef M_PI
 #define M_PI  (3.14159265)
 #endif
+
+typedef signed short MY_TYPE;
+#define FORMAT RTAUDIO_SINT16
+#define SCALE  32767.0
 
 const double PI = 3.14159265358979323846264338327950;
 
@@ -160,30 +166,23 @@ static double scaleToUnit(double x, double min, double max) {
 	return (2 * (x - min)) / (max - min) - 1;
 }
 
-static int audioCallback(const void* inputBuffer, void* outputBuffer,
-	unsigned long framesPerBuffer,
-	const PaStreamCallbackTimeInfo* timeInfo,
-	PaStreamCallbackFlags statusFlags,
-	void* userData)
+static int audioCallback(void* outputBuffer, void* /*inputBuffer*/, unsigned int nBufferFrames,
+	double time, RtAudioStreamStatus status, void* userData)
 {
 
 
 	AudioData* data = (AudioData*)userData;
-	float* out = (float*)outputBuffer;
+	MY_TYPE* out = (MY_TYPE*)outputBuffer;
 
 	//if (audioBuffer.empty()) return paContinue;
 
-	(void)timeInfo; /* Prevent unused variable warnings. */
-	(void)statusFlags;
-	(void)inputBuffer;
 
-	for (int j = 0;  j < framesPerBuffer; j++)
-	{
-			double sample = audioBuffer.front();
-			*out++ = sample;
-			*out++ = sample;
-			audioBuffer.pop_front();
-			audioData.next++;
+	for (int i = 0; i < nBufferFrames; i++) {
+		MY_TYPE sample = (MY_TYPE)(audioBuffer.front() * SCALE * 0.5);
+		*out++ = sample;
+		*out++ = sample;
+		audioBuffer.pop_front();
+		audioData.next++;
 	}
 
 	if (audioData.next >= BUFFER_SIZE) {
@@ -192,7 +191,7 @@ static int audioCallback(const void* inputBuffer, void* outputBuffer,
 	}
 
 
-	return paContinue;
+	return 0;
 }
 
 void advect(GLuint velocityTexture, GLuint dataTexture, GLuint targetTexture, double deltaTime, double dissipation) {
@@ -487,12 +486,6 @@ void update(double time, double deltaTime) {
 					total++;
 				}
 			}
-			//accum = accum > 1.0 ? 1.0 : accum;
-			//accum /= total;
-
-			if (accum > 1) {
-				accum = scaleToUnit(accum, minSample, maxSample);
-			}
 
 			audioBuffer.push_back(accum);
 		}
@@ -703,51 +696,68 @@ void update(double time, double deltaTime) {
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }
 
-PaStreamParameters outputParameters;
-PaStream* stream;
-PaError err;
+RtAudio dac;
+RtAudio::StreamParameters oParams;
+RtAudio::StreamOptions options;
+int err;
+int NoError = 0;
 
-PaError setupAudio() {
-
-	err = Pa_Initialize();
-	if (err != paNoError) return err;
-
-	outputParameters.device = Pa_GetDefaultOutputDevice(); /* default output device */
-	if (outputParameters.device == paNoDevice) {
-		fprintf(stderr, "Error: No default output device.\n");
-		return err;
-	}
-	outputParameters.channelCount = 2;       /* stereo output */
-	outputParameters.sampleFormat = paFloat32; /* 32 bit floating point output */
-	outputParameters.suggestedLatency = Pa_GetDeviceInfo(outputParameters.device)->defaultLowOutputLatency;
-	outputParameters.hostApiSpecificStreamInfo = NULL;
-
-	err = Pa_OpenStream(
-		&stream,
-		NULL, /* no input */
-		&outputParameters,
-		SAMPLE_RATE,
-		FRAMES_PER_BUFFER,
-		paClipOff,      /* we won't output out of range samples so don't bother clipping them */
-		audioCallback,
-		&audioData);
-	if (err != paNoError) return err;
-
-	err = Pa_StartStream(stream);
-	if (err != paNoError) return err;
-
-	return paNoError;
+void errorCallback(RtAudioError::Type type, const std::string& errorText)
+{
+	// This example error handling function does exactly the same thing
+	// as the embedded RtAudio::error() function.
+	std::cout << "in errorCallback" << std::endl;
+	if (type == RtAudioError::WARNING)
+		std::cerr << '\n' << errorText << "\n\n";
+	else if (type != RtAudioError::WARNING)
+		throw(RtAudioError(errorText, type));
 }
 
-PaError endAudioStream() {
-	err = Pa_StopStream(stream);
-	if (err != paNoError) err;
+int setupAudio() {
+	if (dac.getDeviceCount() < 1) {
+		std::cout << "\nNo audio devices found!\n";
+		return 1;
+	}
 
-	err = Pa_CloseStream(stream);
-	if (err != paNoError) return err;
+	// Let RtAudio print messages to stderr.
+	dac.showWarnings(true);
 
-	err = Pa_Terminate();
-	return err;
+	oParams.deviceId = dac.getDefaultOutputDevice();;
+	oParams.nChannels = 2;
+	oParams.firstChannel = 0;
+
+
+	options.flags = RTAUDIO_HOG_DEVICE;
+	options.flags |= RTAUDIO_SCHEDULE_REALTIME;
+#if !defined( USE_INTERLEAVED )
+	options.flags |= RTAUDIO_NONINTERLEAVED;
+#endif
+	unsigned int bufferFrames = FRAMES_PER_BUFFER;
+	try {
+		dac.openStream(&oParams, NULL, FORMAT, SAMPLE_RATE, &bufferFrames, &audioCallback, (void*)&audioData, &options, &errorCallback);
+		dac.startStream();
+	}
+	catch (RtAudioError& e) {
+		e.printMessage();
+		return 1;
+	}
+	return 0;
+}
+
+int endAudioStream() {
+	try {
+		// Stop the stream
+		dac.stopStream();
+	}
+	catch (RtAudioError& e) {
+		e.printMessage();
+		return 1;
+	}
+	return 0;
+}
+
+void cleanupAudio() {
+	if (dac.isStreamOpen()) dac.closeStream();
 }
 
 int main() {
@@ -772,9 +782,9 @@ int main() {
 	
 	err = setupAudio();
 
-	if (err != paNoError) {
-		auto msg = Pa_GetErrorText(err);
-		std::cout << "Error loading portAudio, reason: " + std::string{ msg } << "\n";
+	if (err != NoError) {
+		
+		std::cout << "Error loading rtAudio" << "\n";
 		return 127;
 	}
 
@@ -801,11 +811,12 @@ int main() {
 	delete midiIn;
 
 	err = endAudioStream();
-	if (err != paNoError) {
-		auto msg = Pa_GetErrorText(err);
-		std::cout << "Error terminating portAudio, reason: " + std::string{ msg } << "\n";
+	if (err != NoError) {
+		std::cout << "Error terminating rtAudio" << "\n";
 		return 128;
 	}
+
+	cleanupAudio();
 
 	return 0;
 }
