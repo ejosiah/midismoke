@@ -9,8 +9,26 @@
 #include "utilities.h"
 
 #include <string>
-
+#include <portaudio.h>
+#include <stdexcept>
+#include <iostream>
+#include <algorithm>
+#include <iterator>
+#include <atomic>
+#include <limits>
+#include <boost/circular_buffer.hpp>
+#include <thread>
 #pragma comment(lib, "legacy_stdio_definitions.lib")
+#pragma comment(lib, "portaudio_x86.lib")
+
+#define NUM_SECONDS   (5)
+#define SAMPLE_RATE   (44000)
+#define FRAMES_PER_BUFFER  (440)
+constexpr int BUFFER_SIZE = 4400;
+constexpr double dt = 1.0 / SAMPLE_RATE;
+#ifndef M_PI
+#define M_PI  (3.14159265)
+#endif
 
 const double PI = 3.14159265358979323846264338327950;
 
@@ -120,6 +138,62 @@ float projectionMatrix[16];
 
 Note notes[256];
 bool pedalPressed = false; //if the pedal is held down
+std::atomic_bool audio_buffer_empty = true;
+std::atomic_bool running = true;
+
+struct AudioData {
+	double samples[BUFFER_SIZE];
+	int left_phase;
+	int right_phase;
+	int next = 0;
+};
+
+AudioData audioData;
+boost::circular_buffer<double> audioBuffer(BUFFER_SIZE);
+
+float pitchToFrequency(int pitch) {
+	float x = (pitch - 69.0f) / 12.0f;
+	return std::pow(2, x) * 440.0f;
+}
+
+static double scaleToUnit(double x, double min, double max) {
+	return (2 * (x - min)) / (max - min) - 1;
+}
+
+static int audioCallback(const void* inputBuffer, void* outputBuffer,
+	unsigned long framesPerBuffer,
+	const PaStreamCallbackTimeInfo* timeInfo,
+	PaStreamCallbackFlags statusFlags,
+	void* userData)
+{
+
+
+	AudioData* data = (AudioData*)userData;
+	float* out = (float*)outputBuffer;
+
+	//if (audioBuffer.empty()) return paContinue;
+
+	(void)timeInfo; /* Prevent unused variable warnings. */
+	(void)statusFlags;
+	(void)inputBuffer;
+
+	for (int j = 0;  j < framesPerBuffer; j++)
+	{
+			double sample = audioBuffer.front();
+			*out++ = sample;
+			*out++ = sample;
+			audioBuffer.pop_front();
+			audioData.next++;
+	}
+
+	if (audioData.next >= BUFFER_SIZE) {
+		audioData.next = 0;
+		audio_buffer_empty = true;
+	}
+
+
+	return paContinue;
+}
 
 void advect(GLuint velocityTexture, GLuint dataTexture, GLuint targetTexture, double deltaTime, double dissipation) {
 	glBindFramebuffer(GL_FRAMEBUFFER, simulationFramebuffer);
@@ -273,6 +347,7 @@ void setup() {
 }
 
 void update(double time, double deltaTime) {
+
 	glBindFramebuffer(GL_FRAMEBUFFER, simulationFramebuffer);
 	glViewport(0, 0, SIMULATION_WIDTH, SIMULATION_HEIGHT);
 
@@ -355,9 +430,9 @@ void update(double time, double deltaTime) {
 		}
 	}
 
-
 	// add dye and temperature ///
 
+	
 	for (int i = 0; i < 256; ++i) {
 		Note& note = notes[i];
 
@@ -381,10 +456,48 @@ void update(double time, double deltaTime) {
 
 			add(dyeTextureA, positionX, positionY, positionZ, SPLAT_RADIUS, r * scale, g * scale, b * scale, 0.0);
 
-			note.justPressed = false;
+			note.justPressed = false;		
 		}
 	}
 
+	// collect audio data //
+	int samples = 0;
+	double minSample = std::numeric_limits<double>::max();
+	double maxSample = std::numeric_limits<double>::min();
+	
+	if (audio_buffer_empty) {
+		double dt = 1.0 / SAMPLE_RATE;
+		bool toAudio = false;
+		for (int i = 0; i < BUFFER_SIZE; i++) {
+			audioData.samples[i] = 0;
+			double t = i * dt;
+			double accum = 0;
+			double total = 0;
+			for (int j = 0; j < 256; j++) {
+				auto note = notes[j];
+				if (note.on) {
+					double timeOn = time - note.time;
+					double time = t + timeOn;
+					double freq = pitchToFrequency(j);
+					double sample = note.velocity * std::sin(2 * M_PI * freq * time) * std::exp(-timeOn * 1.5);
+					accum += sample;
+					minSample = std::min(minSample, sample);
+					maxSample = std::max(maxSample, sample);
+					samples++;
+					total++;
+				}
+			}
+			//accum = accum > 1.0 ? 1.0 : accum;
+			//accum /= total;
+
+			if (accum > 1) {
+				accum = scaleToUnit(accum, minSample, maxSample);
+			}
+
+			audioBuffer.push_back(accum);
+		}
+		audio_buffer_empty = samples <= 0;
+	}
 
 	// compute vorticity //////
 
@@ -590,6 +703,53 @@ void update(double time, double deltaTime) {
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }
 
+PaStreamParameters outputParameters;
+PaStream* stream;
+PaError err;
+
+PaError setupAudio() {
+
+	err = Pa_Initialize();
+	if (err != paNoError) return err;
+
+	outputParameters.device = Pa_GetDefaultOutputDevice(); /* default output device */
+	if (outputParameters.device == paNoDevice) {
+		fprintf(stderr, "Error: No default output device.\n");
+		return err;
+	}
+	outputParameters.channelCount = 2;       /* stereo output */
+	outputParameters.sampleFormat = paFloat32; /* 32 bit floating point output */
+	outputParameters.suggestedLatency = Pa_GetDeviceInfo(outputParameters.device)->defaultLowOutputLatency;
+	outputParameters.hostApiSpecificStreamInfo = NULL;
+
+	err = Pa_OpenStream(
+		&stream,
+		NULL, /* no input */
+		&outputParameters,
+		SAMPLE_RATE,
+		FRAMES_PER_BUFFER,
+		paClipOff,      /* we won't output out of range samples so don't bother clipping them */
+		audioCallback,
+		&audioData);
+	if (err != paNoError) return err;
+
+	err = Pa_StartStream(stream);
+	if (err != paNoError) return err;
+
+	return paNoError;
+}
+
+PaError endAudioStream() {
+	err = Pa_StopStream(stream);
+	if (err != paNoError) err;
+
+	err = Pa_CloseStream(stream);
+	if (err != paNoError) return err;
+
+	err = Pa_Terminate();
+	return err;
+}
+
 int main() {
 	glfwInit();
 	glfwWindowHint(GLFW_RESIZABLE, false);
@@ -603,10 +763,20 @@ int main() {
 	unsigned int nPorts = midiIn->getPortCount();
 	if (nPorts == 0) {
 		delete midiIn;
-		return 0;
+		std::cout << "No midi device found\n";
+		return 126;
 	}
 
 	midiIn->openPort();
+
+	
+	err = setupAudio();
+
+	if (err != paNoError) {
+		auto msg = Pa_GetErrorText(err);
+		std::cout << "Error loading portAudio, reason: " + std::string{ msg } << "\n";
+		return 127;
+	}
 
 	setup();
 
@@ -629,6 +799,13 @@ int main() {
 	glfwTerminate();
 
 	delete midiIn;
+
+	err = endAudioStream();
+	if (err != paNoError) {
+		auto msg = Pa_GetErrorText(err);
+		std::cout << "Error terminating portAudio, reason: " + std::string{ msg } << "\n";
+		return 128;
+	}
 
 	return 0;
 }
