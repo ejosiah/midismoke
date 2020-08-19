@@ -16,16 +16,25 @@
 #include <iterator>
 #include <atomic>
 #include <limits>
-#include <boost/circular_buffer.hpp>
 #include <thread>
+#include <random>
+#include <functional>
+#include <ctime>
+#include <ring_buffer.h>
+
 #pragma comment(lib, "legacy_stdio_definitions.lib")
 #pragma comment(lib, "portaudio_x86.lib")
 
 #define NUM_SECONDS   (5)
-#define SAMPLE_RATE   (44000)
-#define FRAMES_PER_BUFFER  (440)
-constexpr int BUFFER_SIZE = 4400;
-constexpr double dt = 1.0 / SAMPLE_RATE;
+#define SAMPLE_RATE   (44100)
+#define FRAMES_PER_BUFFER  (64)
+constexpr int BUFFER_SIZE = 4410;
+constexpr int NUM_CHANNELS = 2;
+constexpr int DURATION_IN_SECONDS = 300;
+constexpr int BITS_PER_SAMPLE = 32;
+constexpr int MAX_SHORT = std::numeric_limits<short>::max();
+constexpr int MAX_INT = std::numeric_limits<int>::max();
+int samplesRecorded = 0;
 #ifndef M_PI
 #define M_PI  (3.14159265)
 #endif
@@ -140,16 +149,23 @@ Note notes[256];
 bool pedalPressed = false; //if the pedal is held down
 std::atomic_bool audio_buffer_empty = true;
 std::atomic_bool running = true;
+std::atomic_bool hasWrites = false;
+
+auto seed = std::random_device{};
+auto engine = std::default_random_engine{ seed() };
+auto dist = std::uniform_real_distribution<float>{ 0, 0.001 };
+auto rngOffset = std::bind(dist, engine);
 
 struct AudioData {
 	double samples[BUFFER_SIZE];
 	int left_phase;
 	int right_phase;
 	int next = 0;
+	float time[256];
 };
 
 AudioData audioData;
-boost::circular_buffer<double> audioBuffer(BUFFER_SIZE);
+ncl::RingBuffer<double, BUFFER_SIZE> audioBuffer;
 
 float pitchToFrequency(int pitch) {
 	float x = (pitch - 69.0f) / 12.0f;
@@ -160,28 +176,36 @@ static double scaleToUnit(double x, double min, double max) {
 	return (2 * (x - min)) / (max - min) - 1;
 }
 
+float lastSample;
+float firstSample;
+
+double interpolate(double a, double b, double t) {
+	return (1 - t) * a + t * b;
+}
+time_t cur_time;
+time_t prevTime = 0;
 static int audioCallback(const void* inputBuffer, void* outputBuffer,
 	unsigned long framesPerBuffer,
 	const PaStreamCallbackTimeInfo* timeInfo,
 	PaStreamCallbackFlags statusFlags,
 	void* userData)
 {
-
-
 	AudioData* data = (AudioData*)userData;
 	float* out = (float*)outputBuffer;
-
-	//if (audioBuffer.empty()) return paContinue;
 
 	(void)timeInfo; /* Prevent unused variable warnings. */
 	(void)statusFlags;
 	(void)inputBuffer;
 
+
 	for (int j = 0;  j < framesPerBuffer; j++)
 	{
 			double sample = audioBuffer.front();
+			if (j == 0) firstSample = sample;
+			if (j == framesPerBuffer - 1) lastSample = sample;
 			*out++ = sample;
 			*out++ = sample;
+
 			audioBuffer.pop_front();
 			audioData.next++;
 	}
@@ -425,6 +449,7 @@ void update(double time, double deltaTime) {
 				note.pressed = false;
 				if (!pedalPressed) {
 					note.on = false;
+					audioData.time[noteIndex] = 0.0f;
 				}
 			}
 		}
@@ -467,19 +492,22 @@ void update(double time, double deltaTime) {
 	
 	if (audio_buffer_empty) {
 		double dt = 1.0 / SAMPLE_RATE;
-		bool toAudio = false;
 		for (int i = 0; i < BUFFER_SIZE; i++) {
 			audioData.samples[i] = 0;
 			double t = i * dt;
 			double accum = 0;
 			double total = 0;
+
 			for (int j = 0; j < 256; j++) {
 				auto note = notes[j];
 				if (note.on) {
+					hasWrites = true;
+					audioData.time[j] += dt;
 					double timeOn = time - note.time;
-					double time = t + timeOn;
+					//double time = t + timeOn;
+					double time = audioData.time[j];
 					double freq = pitchToFrequency(j);
-					double sample = note.velocity * std::sin(2 * M_PI * freq * time) * std::exp(-timeOn * 1.5);
+					double sample = note.velocity * std::sin(2 * M_PI * freq * time) * (1 - std::exp(-50 * timeOn)) * std::exp(-4 * timeOn);
 					accum += sample;
 					minSample = std::min(minSample, sample);
 					maxSample = std::max(maxSample, sample);
@@ -490,7 +518,7 @@ void update(double time, double deltaTime) {
 			//accum = accum > 1.0 ? 1.0 : accum;
 			//accum /= total;
 
-			if (accum > 1) {
+			if (std::abs(accum) > 1) {
 				accum = scaleToUnit(accum, minSample, maxSample);
 			}
 
@@ -751,6 +779,8 @@ PaError endAudioStream() {
 }
 
 int main() {
+	for (int i = 0; i < 256; i++) audioData.time[i] = 0.0f;
+
 	glfwInit();
 	glfwWindowHint(GLFW_RESIZABLE, false);
 	window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "MIDI Smoke Simulator", NULL, NULL);
@@ -795,6 +825,8 @@ int main() {
 		glfwSwapBuffers(window);
 		glfwPollEvents();
 	}
+
+
 
 	glfwTerminate();
 
